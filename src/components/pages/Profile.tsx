@@ -6,6 +6,7 @@ import "../../styles/forms.css";
 export const Profile: React.FC = () => {
   const { user, setUser } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
+  const [fullUserData, setFullUserData] = useState<any>(null);
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -20,26 +21,47 @@ export const Profile: React.FC = () => {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingData, setLoadingData] = useState(true);
 
   useEffect(() => {
-    if (user && isEditing) {
-      const nameParts = user.name?.split(" ") || ["", ""];
+    const fetchUserData = async () => {
+      if (user) {
+        try {
+          const userData = await apiService.getUser(user._id);
+          setFullUserData(userData);
+        } catch (err) {
+          console.error("Error loading user data:", err);
+        } finally {
+          setLoadingData(false);
+        }
+      }
+    };
+    fetchUserData();
+  }, [user]);
+
+  useEffect(() => {
+    if (fullUserData && isEditing) {
+      const firstName = fullUserData.name?.first || "";
+      const lastName = fullUserData.name?.last || "";
+
+      const address = fullUserData.address || {};
 
       setFormData({
-        firstName: nameParts[0] || "",
-        lastName: nameParts.slice(1).join(" ") || "N/A",
-        phone: user.phone || "",
-        image: typeof user.image === "string" ? user.image : "",
-        country: "",
-        city: "",
-        street: "",
-        houseNumber: "",
-        zip: "",
+        firstName: firstName,
+        lastName: lastName,
+        phone: fullUserData.phone || "",
+        image: fullUserData.image?.url || "",
+        country: address.country || "",
+        city: address.city || "",
+        street: address.street || "",
+        houseNumber: address.houseNumber ? String(address.houseNumber) : "",
+        zip: address.zip ? String(address.zip) : "",
       });
     }
-  }, [user, isEditing]);
+  }, [fullUserData, isEditing]);
 
   if (!user) return <div className="loading">Please login first</div>;
+  if (loadingData) return <div className="loading">Loading profile...</div>;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -98,6 +120,7 @@ export const Profile: React.FC = () => {
 
       const updatedUser = await apiService.updateUser(user._id, updatePayload);
 
+      setFullUserData(updatedUser);
       setUser({
         ...user,
         name: `${formData.firstName} ${validLastName}`.trim(),
@@ -124,6 +147,28 @@ export const Profile: React.FC = () => {
     }
   };
 
+  const getDisplayName = () => {
+    if (!fullUserData?.name) return user.name || "Not provided";
+    const { first, middle, last } = fullUserData.name;
+    return (
+      `${first || ""} ${middle || ""} ${last || ""}`.trim() || "Not provided"
+    );
+  };
+
+  const getDisplayAddress = () => {
+    if (!fullUserData?.address) return "Not provided";
+    const addr = fullUserData.address;
+    const parts = [
+      addr.street,
+      addr.houseNumber,
+      addr.city,
+      addr.state,
+      addr.country,
+      addr.zip,
+    ].filter(Boolean);
+    return parts.length > 0 ? parts.join(", ") : "Not provided";
+  };
+
   return (
     <div className="profile-page">
       <div className="profile-container">
@@ -133,45 +178,59 @@ export const Profile: React.FC = () => {
 
         {!isEditing ? (
           <div className="profile-info">
-            <p>
-              <strong>Name:</strong> {user.name || "Not provided"}
-            </p>
-            <p>
-              <strong>Email:</strong> {user.email}
-            </p>
-            <p>
-              <strong>Phone:</strong> {user.phone || "Not provided"}
-            </p>
-            <p>
-              <strong>Account Type:</strong>{" "}
-              {user.isBusiness ? "Business" : "Regular"}
-            </p>
-            {user.isAdmin && (
-              <p>
-                <strong>Role:</strong> Administrator
-              </p>
-            )}
-            {user.address && (
-              <p>
-                <strong>Address:</strong> {user.address}
-              </p>
-            )}
-            {user.image && (
-              <div className="profile-image">
+            {fullUserData?.image?.url && (
+              <div className="profile-image" style={{ marginBottom: "20px" }}>
                 <img
-                  src={typeof user.image === "string" ? user.image : user.image}
-                  alt={user.name}
+                  src={fullUserData.image.url}
+                  alt={fullUserData.image.alt || "Profile"}
                   style={{
                     maxWidth: "200px",
-                    borderRadius: "8px",
-                    marginTop: "10px",
+                    borderRadius: "50%",
+                    border: "3px solid #007bff",
+                    objectFit: "cover",
+                    width: "200px",
+                    height: "200px",
                   }}
                 />
               </div>
             )}
+
+            <div
+              style={{ textAlign: "left", maxWidth: "500px", margin: "0 auto" }}
+            >
+              <p>
+                <strong>Full Name:</strong> {getDisplayName()}
+              </p>
+              <p>
+                <strong>Email:</strong> {fullUserData?.email || user.email}
+              </p>
+              <p>
+                <strong>Phone:</strong> {fullUserData?.phone || "Not provided"}
+              </p>
+              <p>
+                <strong>Account Type:</strong>{" "}
+                {fullUserData?.isBusiness ? "Business" : "Regular"}
+              </p>
+              {fullUserData?.isAdmin && (
+                <p>
+                  <strong>Role:</strong> Administrator
+                </p>
+              )}
+              <p>
+                <strong>Address:</strong> {getDisplayAddress()}
+              </p>
+              <p>
+                <strong>Member Since:</strong>{" "}
+                {fullUserData?.createdAt
+                  ? new Date(fullUserData.createdAt).toLocaleDateString()
+                  : "Unknown"}
+              </p>
+            </div>
+
             <button
               onClick={() => setIsEditing(true)}
               className="btn btn-primary"
+              style={{ marginTop: "20px" }}
             >
               ✏️ Edit Profile
             </button>
